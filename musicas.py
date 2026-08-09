@@ -1,54 +1,67 @@
 import os
-import re
+import acoustid
 
-PASTA_NAO_IDENTIFICADAS = r"c:\Users\Leonardo\Downloads\musicas_nao_identificadas"
+# CONFIGURAÇÕES DEFINIDAS PARA O SEU PC
+PASTA_MUSICAS = r"C:\Users\Leonardo\Downloads\todas_as_musicas"
+API_KEY = "8XaBELgH8O" 
 
-def extrair_data_e_organizar(pasta):
-    print("Iniciando a padronização segura dos arquivos...\n")
+def identificar_musica(caminho_arquivo):
+    try:
+        # Analisa o áudio e busca no banco de dados do AcoustID
+        resultados = acoustid.match(API_KEY, caminho_arquivo)
+        for score, recording_id, title, artist in resultados:
+            if title and artist:
+                return title, artist
+    except acoustid.NoMatchesError:
+        return None, None
+    except Exception as e:
+        print(f"Erro ao processar {os.path.basename(caminho_arquivo)}: {e}")
+        return None, None
+    return None, None
+
+def limpar_nome_arquivo(nome):
+    """Remove caracteres proibidos pelo Windows em nomes de arquivos."""
+    caracteres_invalidos = '<>:"/\\|?*'
+    for char in caracteres_invalidos:
+        nome = nome.replace(char, '')
+    return nome.strip()
+
+def analisar_diretorio(diretorio):
+    print("🚀 Iniciando a identificação e renomeação das músicas...\n")
     
-    if not os.path.exists(pasta):
-        print("Pasta de destino não encontrada.")
-        return
-
-    arquivos = os.listdir(pasta)
-    contador_sucesso = 0
+    # Adicionado .mpeg na lista de formatos suportados
+    formatos_suportados = ('.mp3', '.wav', '.flac', '.m4a', '.mpeg', '.mpg')
     
-    for arquivo in arquivos:
-        caminho_completo = os.path.join(pasta, arquivo)
-        
-        if os.path.isfile(caminho_completo) and "whatsapp" in arquivo.lower():
-            # Extrai data e hora
-            padrao_data = re.search(r"\d{4}-\d{2}-\d{2}", arquivo)
-            padrao_hora = re.search(r"at \d{2}\.\d{2}\.\d{2}", arquivo)
+    for arquivo in os.listdir(diretorio):
+        if arquivo.lower().endswith(formatos_suportados):
+            caminho_completo = os.path.join(diretorio, arquivo)
+            print(f"Analisando áudio de: {arquivo}...")
             
-            data_str = padrao_data.group(0) if padrao_data else "Data-Desconhecida"
-            # CORREÇÃO: Trocado o ":" por "." para o Windows aceitar o nome
-            hora_str = padrao_hora.group(0).replace("at ", "").replace(".", "-") if padrao_hora else "Hora-Desconhecida"
+            titulo, artista = identificar_musica(caminho_completo)
             
-            # Captura o número da cópia para manter a organização
-            padrao_copia = re.search(r"\(\d+\)", arquivo)
-            copia_str = f" {padrao_copia.group(0)}" if padrao_copia else ""
-            
-            # Monta o nome final seguro para o Windows
-            novo_nome_base = f"Freestyle Track - Recebida em {data_str} às {hora_str}{copia_str}"
-            
-            _, extensao = os.path.splitext(arquivo)
-            novo_nome_completo = f"{novo_nome_base}{extensao}"
-            caminho_novo = os.path.join(pasta, novo_nome_completo)
-            
-            # Evita conflitos de arquivos duplicados
-            sufixo = 1
-            while os.path.exists(caminho_novo):
-                caminho_novo = os.path.join(pasta, f"{novo_nome_base}_{sufixo}{extensao}")
-                sufixo += 1
+            if titulo and artista:
+                # Limpa os nomes para evitar erros no Windows
+                artista_limpo = limpar_nome_arquivo(artista)
+                titulo_limpo = limpar_nome_arquivo(titulo)
                 
-            try:
-                os.rename(caminho_completo, caminho_novo)
-                print(f"Sucesso: {os.path.basename(caminho_novo)}")
-                contador_sucesso += 1
-            except Exception as e:
-                print(f"Erro ao renomear {arquivo}: {e}")
+                # Define o novo nome e a extensão original
+                _, extensao = os.path.splitext(arquivo)
+                novo_nome = f"{artista_limpo} - {titulo_limpo}{extensao}"
+                novo_caminho = os.path.join(diretorio, novo_nome)
+                
+                try:
+                    # Renomeia o arquivo fisicamente
+                    os.rename(caminho_completo, novo_caminho)
+                    print(f"✨ RENOMEADO PARA: {novo_name}")
+                except Exception as e:
+                    print(f"⚠️ Identificado como '{artista} - {titulo}', mas não pôde renomear: {e}")
+                print("-" * 60)
+            else:
+                print("❌ Não foi possível identificar esta música por áudio.")
+                print("-" * 60)
 
-    print(f"\nProcesso concluído! {contador_sucesso} arquivos foram padronizados com sucesso.")
-
-extrair_data_e_organizar(PASTA_NAO_IDENTIFICADAS)
+if __name__ == "__main__":
+    if os.path.exists(PASTA_MUSICAS):
+        analisar_diretorio(PASTA_MUSICAS)
+    else:
+        print("Erro: A pasta especificada não foi encontrada.")
